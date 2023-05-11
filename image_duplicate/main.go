@@ -12,6 +12,7 @@ import (
 
 	"github.com/corona10/goimagehash"
 	"github.com/disintegration/imaging"
+	"github.com/mattanapol/image_manager/internal/csv_helper"
 )
 
 const (
@@ -119,7 +120,8 @@ func compareFiles(fileInfos <-chan FileInfo) {
 	processedFolders := make(map[string]map[string]bool)
 
 	// Create the CSV file and write the headers
-	createCSVFileWithHeaders(outputFile)
+	headers := []string{"filePath1", "filePath2", "similarity"}
+	csv_helper.CreateCSVFileWithHeaders(outputFile, headers)
 
 	for fileInfo := range fileInfos {
 		fileDir := filepath.Dir(fileInfo.Path)
@@ -147,7 +149,7 @@ func compareFiles(fileInfos <-chan FileInfo) {
 				fmt.Printf("Found similar files:\n%s\n%s\nSimilarity: %d%%\n", path, fileInfo.Path, similarity)
 				result := []string{path, fileInfo.Path, fmt.Sprintf("%d%%", similarity)}
 
-				appendResultToCSV(outputFile, result)
+				csv_helper.AppendResultToCSV(outputFile, result)
 
 				if _, ok := processedFolders[fileDir]; !ok {
 					processedFolders[fileDir] = make(map[string]bool)

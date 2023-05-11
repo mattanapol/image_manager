@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
+	_ "image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,17 +14,27 @@ import (
 
 	"github.com/h2non/filetype"
 	"github.com/nfnt/resize"
+	"golang.org/x/exp/slices"
+)
+
+var (
+	skipFolderList         = []string{"$RECYCLE.BIN", ".Spotlight", ".fseventsd"}
+	unwantedFileExtensions = []string{".url", ".download", ".js", ".css", ".html", ".ass", ".php", ".txt"}
+	processFileCount       = 0
+	countMutex             sync.Mutex
 )
 
 func main() {
-	folderPath := "/Volumes/SSD02/temp2/TMW0rzd23bGR48"
-	thresholdSize := int64(800000)
+	folderPath := "/Volumes/CRUCIALSSD/temp21"
+	thresholdSize := int64(900000)
 	minResolution := uint(2000)
 	outputPostfix := "_resized"
 	enableResize := true
 	defaultScale := 0.8
 	jpegQuality := 70
 	concurrency := 6
+
+	flattenFolder(folderPath)
 
 	var processedFiles []string
 	var wg sync.WaitGroup
@@ -43,8 +55,15 @@ func main() {
 	}
 
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err != nil && !errors.Is(err, os.ErrPermission) {
 			return err
+		}
+
+		if isBlacklisted(path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		if !info.IsDir() {
@@ -61,6 +80,7 @@ func main() {
 		return
 	}
 
+	fmt.Println("Processed", processFileCount, "files.")
 	fmt.Print("Do you want to delete the original image files that were processed? (Y/N): ")
 	var input string
 	fmt.Scanln(&input)
@@ -135,7 +155,107 @@ func processFile(path string, thresholdSize int64, minResolution uint, outputPos
 			return err
 		}
 
-		*processedFiles = append(*processedFiles, path)
+		err = os.Remove(path)
+		if err != nil {
+			fmt.Println("Error deleting file:", path, "Error:", err)
+		}
+		countMutex.Lock()
+		processFileCount++
+		countMutex.Unlock()
+
+		// *processedFiles = append(*processedFiles, path)
 	}
+	return nil
+}
+
+func isBlacklisted(path string) bool {
+	for _, item := range skipFolderList {
+		if strings.Contains(path, item) {
+			return true
+		}
+	}
+	return false
+}
+
+func flattenFolder(parentFolder string) error {
+	if isBlacklisted(parentFolder) {
+		return nil
+	}
+	clearUnwantedFiles(parentFolder)
+	// Get a list of all the items in the parent folder
+	items, err := os.ReadDir(parentFolder)
+	if err != nil {
+		return err
+	}
+
+	if len(items) == 0 {
+		os.Remove(parentFolder)
+		return filepath.SkipDir
+	}
+
+	// Check if there's only one item in the parent folder, and if it's a directory
+	if len(items) == 1 && items[0].IsDir() {
+		// Get the path to the subfolder
+		subfolderPath := filepath.Join(parentFolder, items[0].Name())
+
+		// Move all the files in the subfolder to the parent folder
+		subfolderItems, err := os.ReadDir(subfolderPath)
+		if err != nil {
+			return err
+		}
+		for _, file := range subfolderItems {
+			filePath := filepath.Join(subfolderPath, file.Name())
+			err = os.Rename(filePath, filepath.Join(parentFolder, file.Name()))
+			if err != nil {
+				return err
+			}
+		}
+
+		// Delete the subfolder
+		err = os.Remove(subfolderPath)
+		if err != nil {
+			return err
+		}
+	} else {
+		for _, item := range items {
+			if item.IsDir() {
+				err = flattenFolder(filepath.Join(parentFolder, item.Name()))
+				if errors.Is(err, filepath.SkipDir) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func clearUnwantedFiles(parentFolder string) error {
+	if isBlacklisted(parentFolder) {
+		return nil
+	}
+
+	// Get a list of all the items in the parent folder
+	items, err := os.ReadDir(parentFolder)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		if item.IsDir() {
+			continue
+		}
+		// if file extension match unwanted list, delete it
+		if slices.Contains(unwantedFileExtensions, strings.ToLower(filepath.Ext(item.Name()))) {
+			err = os.Remove(filepath.Join(parentFolder, item.Name()))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
