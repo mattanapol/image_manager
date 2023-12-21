@@ -25,17 +25,16 @@ var (
 )
 
 func main() {
-	folderPath := "/Volumes/CRUCIALSSD/temp21"
+	folderPath := "/Users/kaewsai/Downloads/temp"
 	thresholdSize := int64(900000)
 	minResolution := uint(2000)
 	outputPostfix := "_resized"
 	enableResize := true
 	defaultScale := 0.8
 	jpegQuality := 70
-	concurrency := 6
+	concurrency := 3
 
 	flattenFolder(folderPath)
-
 	var processedFiles []string
 	var wg sync.WaitGroup
 
@@ -183,23 +182,29 @@ func flattenFolder(parentFolder string) error {
 	}
 	clearUnwantedFiles(parentFolder)
 	// Get a list of all the items in the parent folder
-	items, err := os.ReadDir(parentFolder)
+	items, err := readDirAndFilterFile(parentFolder)
 	if err != nil {
 		return err
 	}
 
 	if len(items) == 0 {
-		os.Remove(parentFolder)
+		os.RemoveAll(parentFolder)
 		return filepath.SkipDir
 	}
 
+	// for _, item := range items {
+	// 	fmt.Printf("Processing item: %s\n", item.Name())
+	// }
+	// // pause
+	// fmt.Scanln()
 	// Check if there's only one item in the parent folder, and if it's a directory
 	if len(items) == 1 && items[0].IsDir() {
+		// fmt.Printf("Flattening subfolder: %s\n", filteredItems[0].Name())
 		// Get the path to the subfolder
 		subfolderPath := filepath.Join(parentFolder, items[0].Name())
 
 		// Move all the files in the subfolder to the parent folder
-		subfolderItems, err := os.ReadDir(subfolderPath)
+		subfolderItems, err := readDirAndFilterFile(subfolderPath)
 		if err != nil {
 			return err
 		}
@@ -207,13 +212,32 @@ func flattenFolder(parentFolder string) error {
 			filePath := filepath.Join(subfolderPath, file.Name())
 			err = os.Rename(filePath, filepath.Join(parentFolder, file.Name()))
 			if err != nil {
+				fmt.Printf("Error moving file %s to %s: %s\n", filePath, parentFolder, err)
 				return err
 			}
 		}
 
 		// Delete the subfolder
-		err = os.Remove(subfolderPath)
+		err = os.RemoveAll(subfolderPath)
 		if err != nil {
+			fmt.Printf("Error deleting subfolder %s: %s\n", subfolderPath, err)
+			return err
+		}
+	} else if len(items) == 1 {
+		filePath := filepath.Join(parentFolder, items[0].Name())
+		// move the file to the parent folder
+		parentOfParent := filepath.Dir(parentFolder)
+		newName := filepath.Base(parentFolder) + filepath.Ext(items[0].Name())
+
+		err = os.Rename(filePath, filepath.Join(parentOfParent, newName))
+		if err != nil {
+			fmt.Printf("Error moving file %s to %s: %s\n", filePath, parentOfParent, err)
+			return err
+		}
+		// Delete the subfolder
+		err = os.RemoveAll(parentFolder)
+		if err != nil {
+			fmt.Printf("Error deleting subfolder %s: %s\n", parentFolder, err)
 			return err
 		}
 	} else {
@@ -224,6 +248,7 @@ func flattenFolder(parentFolder string) error {
 					continue
 				}
 				if err != nil {
+					fmt.Printf("Error flattening subfolder %s: %s\n", item.Name(), err)
 					return err
 				}
 			}
@@ -231,6 +256,27 @@ func flattenFolder(parentFolder string) error {
 	}
 
 	return nil
+}
+
+func readDirAndFilterFile(parentFolder string) ([]os.DirEntry, error) {
+	if isBlacklisted(parentFolder) {
+		return []os.DirEntry{}, nil
+	}
+
+	// Get a list of all the items in the parent folder
+	items, err := os.ReadDir(parentFolder)
+	if err != nil {
+		return nil, err
+	}
+
+	var filteredItems []os.DirEntry
+	for _, item := range items {
+		// Filter out the file start with "."
+		if !strings.HasPrefix(item.Name(), ".") {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+	return filteredItems, nil
 }
 
 func clearUnwantedFiles(parentFolder string) error {

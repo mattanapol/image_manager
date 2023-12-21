@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattanapol/image_manager/internal/common"
@@ -25,8 +26,9 @@ type VideoMetadata struct {
 }
 
 const (
-	rootPath   = "/Volumes/CRUCIALSSD"
-	outputPath = "./output.csv"
+	rootPath   = "/Users/kaewsai/Downloads/temp2"
+	outputPath = "./output2.csv"
+	concurrent = 10
 )
 
 func main() {
@@ -46,30 +48,43 @@ func main() {
 	headers := []string{"videoPath", "resolution", "fileSize", "duration", "bitrate", "isLarge"}
 	csv_helper.CreateCSVFileWithHeaders(outputPath, headers)
 
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, concurrent)
+
 	for _, video := range videos {
-		metadata, err := getVideoMetadata(video)
-		if err != nil {
-			// get file size
-			fileStat, err := file_helper.GetFileStat(video)
-			var fileSize float64 = 0
+		wg.Add(1)
+		semaphore <- struct{}{}
+		go func(videoPath string) {
+			metadata, err := getVideoMetadata(videoPath)
 			if err != nil {
-				fmt.Printf("[Error] FileSize: %s\n", err)
-				fileSize = float64(fileStat.Size()) / 1024 / 1024
+				// get file size
+				fileStat, err := file_helper.GetFileStat(videoPath)
+				var fileSize float64 = 0
+				if err != nil {
+					fmt.Printf("[Error] FileSize: %s\n", err)
+					fileSize = float64(fileStat.Size()) / 1024 / 1024
+				}
+
+				record := []string{videoPath, "error", fmt.Sprintf("%f", fileSize), "error", "error", "error"}
+				csv_helper.AppendResultToCSV(outputPath, record)
+
+				wg.Done()
+				<-semaphore
+				return
 			}
 
-			record := []string{video, "error", fmt.Sprintf("%f", fileSize), "error", "error", "error"}
+			resolution := fmt.Sprintf("%dx%d", metadata.Width, metadata.Height)
+			isLarge := isBitrateLarge(resolution, metadata.Bitrate)
+
+			record := []string{videoPath, resolution, fmt.Sprintf("%f", metadata.SizeMb), metadata.Duration, fmt.Sprintf("%d", metadata.Bitrate), fmt.Sprintf("%t", isLarge)}
 			csv_helper.AppendResultToCSV(outputPath, record)
 
-			continue
-		}
-
-		resolution := fmt.Sprintf("%dx%d", metadata.Width, metadata.Height)
-		isLarge := isBitrateLarge(resolution, metadata.Bitrate)
-
-		record := []string{video, resolution, fmt.Sprintf("%f", metadata.SizeMb), metadata.Duration, fmt.Sprintf("%d", metadata.Bitrate), fmt.Sprintf("%t", isLarge)}
-		csv_helper.AppendResultToCSV(outputPath, record)
+			wg.Done()
+			<-semaphore
+		}(video)
 	}
 
+	wg.Wait()
 	fmt.Println("Output saved to output.csv")
 }
 
