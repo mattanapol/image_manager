@@ -18,15 +18,16 @@ import (
 )
 
 type VideoMetadata struct {
-	Width    int
-	Height   int
-	Bitrate  int
-	SizeMb   float64
-	Duration string
+	Width       int
+	Height      int
+	Bitrate     int
+	SizeMb      float64
+	Duration    string
+	DurationSec float64
 }
 
 const (
-	rootPath   = "/Users/kaewsai/Downloads/temp2"
+	rootPath   = "/Users/kaewsai/Downloads/temp"
 	outputPath = "./output2.csv"
 	concurrent = 10
 )
@@ -45,7 +46,7 @@ func main() {
 		return
 	}
 
-	headers := []string{"videoPath", "resolution", "fileSize", "duration", "bitrate", "isLarge"}
+	headers := []string{"videoPath", "resolution", "fileSize", "duration", "bitrate", "isLarge", "durationSec"}
 	csv_helper.CreateCSVFileWithHeaders(outputPath, headers)
 
 	var wg sync.WaitGroup
@@ -76,7 +77,7 @@ func main() {
 			resolution := fmt.Sprintf("%dx%d", metadata.Width, metadata.Height)
 			isLarge := isBitrateLarge(resolution, metadata.Bitrate)
 
-			record := []string{videoPath, resolution, fmt.Sprintf("%f", metadata.SizeMb), metadata.Duration, fmt.Sprintf("%d", metadata.Bitrate), fmt.Sprintf("%t", isLarge)}
+			record := []string{videoPath, resolution, fmt.Sprintf("%f", metadata.SizeMb), metadata.Duration, fmt.Sprintf("%d", metadata.Bitrate), fmt.Sprintf("%t", isLarge), fmt.Sprintf("%f", metadata.DurationSec)}
 			csv_helper.AppendResultToCSV(outputPath, record)
 
 			wg.Done()
@@ -122,11 +123,12 @@ func getVideoMetadata(videoPath string) (VideoMetadata, error) {
 	}
 
 	metadata := VideoMetadata{
-		Width:    videoStream.Width,
-		Height:   videoStream.Height,
-		Bitrate:  bitrate,
-		SizeMb:   float64(fileSize) / 1000000,
-		Duration: durationString,
+		Width:       videoStream.Width,
+		Height:      videoStream.Height,
+		Bitrate:     bitrate,
+		SizeMb:      float64(fileSize) / 1000000,
+		Duration:    durationString,
+		DurationSec: durationFloat,
 	}
 
 	return metadata, nil
@@ -135,7 +137,7 @@ func getVideoMetadata(videoPath string) (VideoMetadata, error) {
 func getAllVideos(folder string) ([]string, error) {
 	var videos []string
 	err := filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() && common.ShouldSkipFolder(path) {
+		if info == nil || (info.IsDir() && common.ShouldSkipFolder(path)) {
 			return filepath.SkipDir
 		}
 
@@ -150,7 +152,7 @@ func getAllVideos(folder string) ([]string, error) {
 }
 
 func isVideo(filename string) bool {
-	videoExtensions := []string{".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv"}
+	videoExtensions := []string{".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".mts"}
 	ext := strings.ToLower(filepath.Ext(filename))
 	for _, videoExt := range videoExtensions {
 		if ext == videoExt {

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,12 +17,14 @@ import (
 )
 
 const (
-	similarityThreshold = 96
+	similarityThreshold = 99
 	gcInterval          = 100
+	hashSavePerFolder   = 5
+	percentSave         = 10
 )
 
 var (
-	rootFolder      = "/Volumes/SSD02"
+	rootFolder      = "/Volumes/CRUCIALSSD"
 	numberOfThreads = 2
 	outputFile      = "./results.csv"
 	blacklist       = []string{"$RECYCLE.BIN"}
@@ -118,6 +121,7 @@ func isBlacklisted(path string) bool {
 func compareFiles(fileInfos <-chan FileInfo) {
 	processed := make(map[string]*goimagehash.ImageHash)
 	processedFolders := make(map[string]map[string]bool)
+	processedHashFolderCount := make(map[string]int)
 
 	// Create the CSV file and write the headers
 	headers := []string{"filePath1", "filePath2", "similarity"}
@@ -158,8 +162,19 @@ func compareFiles(fileInfos <-chan FileInfo) {
 			}
 		}
 
-		processed[fileInfo.Path] = fileInfo.Hash
+		if _, ok := processedHashFolderCount[fileDir]; !ok {
+			processedHashFolderCount[fileDir] = 0
+		}
+		if processedHashFolderCount[fileDir] < hashSavePerFolder &&
+			tossACoin(percentSave) {
+			processedHashFolderCount[fileDir]++
+			processed[fileInfo.Path] = fileInfo.Hash
+		}
 	}
+}
+
+func tossACoin(percent int) bool {
+	return rand.Intn(100/percent) == 0
 }
 
 func createCSVFileWithHeaders(filename string) {

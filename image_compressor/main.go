@@ -20,6 +20,7 @@ import (
 var (
 	skipFolderList         = []string{"$RECYCLE.BIN", ".Spotlight", ".fseventsd"}
 	unwantedFileExtensions = []string{".url", ".download", ".js", ".css", ".html", ".ass", ".php", ".txt"}
+	unwantedFileName       = []string{}
 	processFileCount       = 0
 	countMutex             sync.Mutex
 )
@@ -32,7 +33,7 @@ func main() {
 	enableResize := true
 	defaultScale := 0.8
 	jpegQuality := 70
-	concurrency := 3
+	concurrency := 5
 
 	flattenFolder(folderPath)
 	var processedFiles []string
@@ -294,8 +295,13 @@ func clearUnwantedFiles(parentFolder string) error {
 		if item.IsDir() {
 			continue
 		}
-		// if file extension match unwanted list, delete it
-		if slices.Contains(unwantedFileExtensions, strings.ToLower(filepath.Ext(item.Name()))) {
+		fileExt := strings.ToLower(filepath.Ext(item.Name()))
+		fileInfo, _ := item.Info()
+		// if file extension match unwanted list, or don't have extension, delete it
+		if slices.Contains(unwantedFileExtensions, fileExt) ||
+			fileExt == "" ||
+			fileInfo.Size() < 102400 ||
+			slices.Contains(unwantedFileName, item.Name()) {
 			err = os.Remove(filepath.Join(parentFolder, item.Name()))
 			if err != nil {
 				return err

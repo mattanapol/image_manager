@@ -172,8 +172,8 @@ func compressVideo(input, output string,
 
 	var args ffmpeg.KwArgs = map[string]interface{}{
 		"c:v":    "libx265",
-		"crf":    "23",
-		"preset": "superfast",
+		"crf":    "22",
+		"preset": "veryfast",
 		"c:a":    "aac",
 		"b:a":    "128k",
 		"tag:v":  "hvc1",
