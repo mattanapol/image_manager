@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,7 @@ type VideoMetadata struct {
 }
 
 const (
-	rootPath   = "/Users/kaewsai/Downloads/temp"
+	rootPath   = "/Volumes/CRUCIALSSD"
 	outputPath = "./output2.csv"
 	concurrent = 10
 )
@@ -136,7 +137,7 @@ func getVideoMetadata(videoPath string) (VideoMetadata, error) {
 
 func getAllVideos(folder string) ([]string, error) {
 	var videos []string
-	err := filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(folder, func(path string, info fs.DirEntry, err error) error {
 		if info == nil || (info.IsDir() && common.ShouldSkipFolder(path)) {
 			return filepath.SkipDir
 		}

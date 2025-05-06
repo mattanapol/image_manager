@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,13 +21,16 @@ func main() {
 	var counter int = 0
 	semaphore := make(chan struct{}, 1)
 	semaphoreDel := make(chan struct{}, 1)
-	completed := make(chan string, len(videoPaths))
+	completed := make(chan CompletedEntry, len(videoPaths))
 
-	go func(completedChan chan string) {
+	go func(completedChan chan CompletedEntry) {
 		for input := range completedChan {
-			wg.Add(1)
 			semaphoreDel <- struct{}{} // Acquire the semaphore
-			isNeeded := isVideoStillNeeded(input, counter, videoPaths)
+			isNeeded := isVideoStillNeeded(input.InputVideoPath, counter, videoPaths)
+			isSmaller, err := isNewFileSmaller(input.InputVideoPath, input.OutputVideoPath)
+			if err != nil {
+				log.Printf("Error comparing file sizes: %v", err)
+			}
 			if isNeeded {
 				log.Printf("Skipping removal of %s\n", input)
 				<-semaphoreDel // Release the semaphore
@@ -42,12 +44,21 @@ func main() {
 			// answer = strings.ToUpper(strings.TrimSpace(answer))
 			answer := "Y"
 
-			if answer == "Y" {
-				err := os.Remove(input)
+			if answer == "Y" && isSmaller {
+				err := os.Remove(input.InputVideoPath)
 				if err != nil {
 					log.Printf("Error removing original file %s: %v", input, err)
 				} else {
 					log.Printf("Removed original file: %s\n", input)
+				}
+			}
+			if !isSmaller {
+				log.Println("The new file is larger than the original file. Remove new file")
+				err := os.Remove(input.OutputVideoPath)
+				if err != nil {
+					log.Printf("Error removing new file %s: %v", input, err)
+				} else {
+					log.Printf("Removed new file: %s\n", input.OutputVideoPath)
 				}
 			}
 			<-semaphoreDel // Release the semaphore
@@ -59,7 +70,6 @@ func main() {
 		wg.Add(1)
 		semaphore <- struct{}{} // Acquire the semaphore
 		go func(e InputEntry) {
-			defer wg.Done()
 			err := compressVideo(e.VideoPath, e.OutputPath, e.StartTime, e.EndTime)
 			counter++
 			log.Printf("Progress: %d/%d\n", counter, len(videoPaths))
@@ -68,14 +78,15 @@ func main() {
 				log.Printf("Error compressing video: %v", err)
 				// return
 			}
-			completed <- e.VideoPath
+			completed <- CompletedEntry{
+				InputVideoPath:  e.VideoPath,
+				OutputVideoPath: e.OutputPath,
+			}
 		}(path)
 	}
 
-	go func() {
-		wg.Wait()
-		close(completed)
-	}()
+	wg.Wait()
+	close(completed)
 }
 
 type InputEntry struct {
@@ -83,6 +94,11 @@ type InputEntry struct {
 	OutputPath string
 	StartTime  *string
 	EndTime    *string
+}
+
+type CompletedEntry struct {
+	InputVideoPath  string
+	OutputVideoPath string
 }
 
 func isVideoStillNeeded(videoPath string, counter int, videoPaths []InputEntry) bool {
@@ -94,8 +110,28 @@ func isVideoStillNeeded(videoPath string, counter int, videoPaths []InputEntry) 
 	return false
 }
 
+// Compare size of two files
+func isNewFileSmaller(oldFilePath, newFilePath string) (bool, error) {
+	oldFileInfo, err := os.Stat(oldFilePath)
+	if err != nil {
+		return false, err
+	}
+
+	newFileInfo, err := os.Stat(newFilePath)
+	if err != nil {
+		return false, err
+	}
+	if oldFileInfo.IsDir() || newFileInfo.IsDir() {
+		return false, nil
+	}
+
+	log.Printf("Old file size: %d, New file size: %d\n", oldFileInfo.Size()/(1024*1024), newFileInfo.Size()/(1024*1024))
+
+	return newFileInfo.Size() <= oldFileInfo.Size(), nil
+}
+
 func readConfig(filename string) ([]InputEntry, error) {
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
