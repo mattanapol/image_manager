@@ -38,7 +38,7 @@ func main() {
 				continue
 			}
 
-			log.Printf("Finished compressing %s\nDo you want to remove the original file? (Y/N): \n", input)
+			// log.Printf("Finished compressing %s\nDo you want to remove the original file? (Y/N): \n", input)
 			// reader := bufio.NewReader(os.Stdin)
 			// answer, _ := reader.ReadString('\n')
 			// answer = strings.ToUpper(strings.TrimSpace(answer))
@@ -209,11 +209,20 @@ func compressVideo(input, output string,
 	var args ffmpeg.KwArgs = map[string]interface{}{
 		"c:v":    "libx265",
 		"crf":    "22",
-		"preset": "veryfast",
+		"preset": "medium",
 		"c:a":    "aac",
 		"b:a":    "128k",
 		"tag:v":  "hvc1",
 	}
+
+	// var args ffmpeg.KwArgs = map[string]interface{}{
+	// 	"c:v":    "libx265",
+	// 	"crf":    "22",
+	// 	"preset": "veryfast",
+	// 	"c:a":    "aac",
+	// 	"b:a":    "128k",
+	// 	"tag:v":  "hvc1",
+	// }
 
 	// var args ffmpeg.KwArgs = map[string]interface{}{
 	// 	"c:v":    "h264_videotoolbox",
